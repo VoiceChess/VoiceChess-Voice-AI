@@ -109,6 +109,13 @@ class ProcessAudioResponse(BaseModel):
     latency: LatencyBreakdown
 
 
+class TranscribeResponse(BaseModel):
+    text: str
+    language: str = "en"
+    confidence: float = 0.0
+    latency_ms: float
+
+
 class TestTTSRequest(BaseModel):
     text: Optional[str] = None
 
@@ -487,6 +494,46 @@ async def health_deep() -> dict:
         "llm_model": f"Ollama ({OLLAMA_MODEL_NAME})",
         "language": processor.language,
     }
+
+
+@app.post("/api/transcribe", response_model=TranscribeResponse)
+async def transcribe_audio(request: Request) -> TranscribeResponse:
+    cfg = processor.config_from_request(request)
+    start = time.perf_counter()
+    audio_bytes = await request.body()
+
+    if len(audio_bytes) < 1000:
+        log_event(
+            "voice_rejected",
+            reason="audio_too_short",
+            bytes=len(audio_bytes),
+            language=cfg.language,
+        )
+        raise HTTPException(status_code=400, detail="Audio stream is too short")
+
+    if processor.stt_model is None:
+        raise HTTPException(status_code=503, detail="Speech model is still loading")
+
+    try:
+        text, language, confidence = await processor.transcribe(
+            audio_bytes, cfg.language
+        )
+    except Exception as error:
+        log_event("voice_transcribe_failed", error=str(error), language=cfg.language)
+        raise HTTPException(
+            status_code=500, detail="Voice transcription failed"
+        ) from error
+
+    total_ms = round((time.perf_counter() - start) * 1000, 2)
+    log_event(
+        "voice_transcribe_completed",
+        total_ms=total_ms,
+        language=language,
+        confidence=confidence,
+    )
+    return TranscribeResponse(
+        text=text, language=language, confidence=confidence, latency_ms=total_ms
+    )
 
 
 @app.post("/api/process-audio", response_model=ProcessAudioResponse)
