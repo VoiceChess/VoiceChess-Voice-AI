@@ -334,6 +334,7 @@ class VoiceProcessor:
                 detected_language=detected_lang,
                 confidence=round(confidence, 4),
                 text_length=len(transcript),
+                transcript=transcript,
             )
             return transcript, detected_lang, confidence
         finally:
@@ -656,6 +657,8 @@ async def transcribe_audio(request: Request) -> TranscribeResponse:
         total_ms=total_ms,
         language=language,
         confidence=confidence,
+        text_length=len(text),
+        transcript=text,
     )
     return TranscribeResponse(
         text=text, language=language, confidence=confidence, latency_ms=total_ms
