@@ -48,6 +48,48 @@ STT_INITIAL_PROMPT = os.getenv(
     "STT_INITIAL_PROMPT",
     "Chess voice command. Use board coordinates exactly, for example d4 ke d5, e2 ke e4, g1 ke f3. Letters are a b c d e f g h and ranks are 1 2 3 4 5 6 7 8.",
 )
+CHESS_WORDS = {
+    "ah": "a",
+    "bee": "b",
+    "be": "b",
+    "bi": "b",
+    "cee": "c",
+    "sea": "c",
+    "see": "c",
+    "ce": "c",
+    "si": "c",
+    "dee": "d",
+    "de": "d",
+    "di": "d",
+    "the": "d",
+    "ee": "e",
+    "eh": "e",
+    "eff": "f",
+    "ef": "f",
+    "gee": "g",
+    "ge": "g",
+    "ji": "g",
+    "aitch": "h",
+    "ha": "h",
+    "one": "1",
+    "satu": "1",
+    "two": "2",
+    "dua": "2",
+    "three": "3",
+    "tiga": "3",
+    "four": "4",
+    "empat": "4",
+    "five": "5",
+    "lima": "5",
+    "rima": "5",
+    "delima": "5",
+    "six": "6",
+    "enam": "6",
+    "seven": "7",
+    "tujuh": "7",
+    "eight": "8",
+    "delapan": "8",
+}
 DEFAULT_VOICES = {
     "id": "id-ID-GadisNeural",
     "en": "en-US-JennyNeural",
@@ -329,6 +371,8 @@ class VoiceProcessor:
             transcript, detected_lang, confidence = await loop.run_in_executor(
                 None, run_whisper
             )
+            raw_transcript = transcript
+            transcript = self._normalize_chess_transcript(transcript)
 
             if confidence < 0.7:
                 log_event(
@@ -349,6 +393,7 @@ class VoiceProcessor:
                 confidence=round(confidence, 4),
                 text_length=len(transcript),
                 transcript=transcript,
+                raw_transcript=raw_transcript,
             )
             return transcript, detected_lang, confidence
         finally:
@@ -512,6 +557,24 @@ class VoiceProcessor:
     def _normalize_language(self, language: str) -> str:
         value = (language or "en").strip().lower().split("-")[0]
         return value if value in SUPPORTED_STT_LANGUAGES else "en"
+
+    def _normalize_chess_transcript(self, transcript: str) -> str:
+        text = transcript.lower().strip()
+        for source, target in CHESS_WORDS.items():
+            text = re.sub(rf"\b{re.escape(source)}\b", target, text)
+        text = re.sub(r"\bke\s+b\s+e\s*([1-8])\b", r"ke d\1", text)
+        text = re.sub(r"\bke\s+b\s+e([1-8])\b", r"ke d\1", text)
+        text = re.sub(r"\b(kadeh|kade|ke de|ke d)\b", "ke d", text)
+        text = re.sub(r"\b([a-h])\s+([1-8])\b", r"\1\2", text)
+        text = re.sub(
+            r"\b([a-h][1-8])\s+(?:2|,|go|to|tu|ke|menuju|pindah ke)\s+([a-h])\s*([1-8])\b",
+            r"\1 ke \2\3",
+            text,
+        )
+        text = re.sub(
+            r"\b([a-h])\s*([1-8])\s*,?\s+([a-h])\s*([1-8])\b", r"\1\2 ke \3\4", text
+        )
+        return text.strip()
 
     def _normalize(self, text: str) -> str:
         return re.sub(r"\s+", " ", text.lower()).strip()
