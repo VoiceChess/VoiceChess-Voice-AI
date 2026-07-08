@@ -1,0 +1,19 @@
+services:
+  voicechess-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: voicechess-gateway
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./audio_cache:/app/audio_cache
+      - ./.hf_cache:/app/.hf_cache
+    environment:
+      - OLLAMA_API_URL=http://host.docker.internal:11434/api/chat
+      - OLLAMA_MODEL_NAME=qwen2.5:3b
+      - VOICE_LANGUAGE=en
+      - VOICE_TTS_VOICE=en-US-JennyNeural
+      - VOICE_TTS_RATE=-10%
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

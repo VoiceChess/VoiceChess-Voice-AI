@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.env
+.git/
+.gitignore
+README.md
+audio_cache/
+temp_audio/
+.hf_cache/
+*.mp3
