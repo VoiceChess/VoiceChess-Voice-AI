@@ -37,16 +37,17 @@ from pydantic import BaseModel
 # ==========================================
 STT_MODEL_SIZE = os.getenv("STT_MODEL_SIZE", "base")
 STT_DEVICE = os.getenv("STT_DEVICE", "auto").lower()
+STT_VAD_FILTER = os.getenv("STT_VAD_FILTER", "false").lower() == "true"
 OLLAMA_API_URL = os.getenv("OLLAMA_API_URL", "").strip()
 OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY", "").strip()
 OLLAMA_MODEL_NAME = os.getenv("OLLAMA_MODEL_NAME", "qwen2.5:3b")
 STT_HOTWORDS = os.getenv(
     "STT_HOTWORDS",
-    "a1 a2 a3 a4 a5 a6 a7 a8 b1 b2 b3 b4 b5 b6 b7 b8 c1 c2 c3 c4 c5 c6 c7 c8 d1 d2 d3 d4 d5 d6 d7 d8 e1 e2 e3 e4 e5 e6 e7 e8 f1 f2 f3 f4 f5 f6 f7 f8 g1 g2 g3 g4 g5 g6 g7 g8 h1 h2 h3 h4 h5 h6 h7 h8 D4 ke D5 d4 ke d5 ke to dari menuju pion kuda gajah benteng ratu raja",
+    "a1 a2 a3 a4 a5 a6 a7 a8 b1 b2 b3 b4 b5 b6 b7 b8 c1 c2 c3 c4 c5 c6 c7 c8 d1 d2 d3 d4 d5 d6 d7 d8 e1 e2 e3 e4 e5 e6 e7 e8 f1 f2 f3 f4 f5 f6 f7 f8 g1 g2 g3 g4 g5 g6 g7 g8 h1 h2 h3 h4 h5 h6 h7 h8 D4 ke D5 d4 ke d5 f empat ke f lima f4 ke f5 c dua ke c tiga c2 ke c3 satu dua tiga empat lima enam tujuh delapan ke to dari menuju pion kuda gajah benteng ratu raja",
 )
 STT_INITIAL_PROMPT = os.getenv(
     "STT_INITIAL_PROMPT",
-    "Chess voice command. Use board coordinates exactly, for example d4 ke d5, e2 ke e4, g1 ke f3. Letters are a b c d e f g h and ranks are 1 2 3 4 5 6 7 8.",
+    "Chess voice command. Preserve spoken board ranks exactly. Indonesian numbers: satu=1 dua=2 tiga=3 empat=4 lima=5 enam=6 tujuh=7 delapan=8. Examples: f empat ke f lima means f4 ke f5, c dua ke c tiga means c2 ke c3, d satu ke d dua means d1 ke d2.",
 )
 CHESS_WORDS = {
     "ah": "a",
@@ -363,7 +364,7 @@ class VoiceProcessor:
                     initial_prompt=STT_INITIAL_PROMPT,
                     hotwords=STT_HOTWORDS,
                     condition_on_previous_text=False,
-                    vad_filter=True,
+                    vad_filter=STT_VAD_FILTER,
                 )
                 transcript = " ".join([segment.text for segment in segments]).strip()
                 return transcript, info.language, info.language_probability
