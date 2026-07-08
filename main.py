@@ -431,17 +431,36 @@ async def startup() -> None:
         ollama_configured=bool(OLLAMA_API_URL),
         ollama_api_key_configured=bool(OLLAMA_API_KEY),
     )
-    processor.load()
-    log_event(
-        "startup_ready",
-        active_stt_device=processor.stt_device,
-        default_language=processor.language,
-        default_voice=processor.tts_voice,
-    )
+
+    # ponytail: load Whisper in a background thread so the server (and /health)
+    # comes up immediately. Downloading "base" on CPU can take minutes; blocking
+    # startup here makes Railway's healthcheck fail with "service unavailable".
+    async def _load_stt() -> None:
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, processor.load)
+        log_event(
+            "startup_ready",
+            active_stt_device=processor.stt_device,
+            default_language=processor.language,
+            default_voice=processor.tts_voice,
+        )
+
+    asyncio.create_task(_load_stt())
 
 
 @app.get("/health")
 async def health() -> dict:
+    # ponytail: liveness only — must answer instantly so Railway's healthcheck
+    # passes even while Whisper is still loading. Deep checks live in /health/deep.
+    return {
+        "status": "ok",
+        "stt_ready": processor.stt_model is not None,
+        "llm_model": f"Ollama ({OLLAMA_MODEL_NAME})",
+    }
+
+
+@app.get("/health/deep")
+async def health_deep() -> dict:
     status = "not_configured"
     if OLLAMA_API_URL:
         try:
@@ -449,12 +468,13 @@ async def health() -> dict:
                 res = await client.get(
                     OLLAMA_API_URL.split("/api")[0] + "/",
                     headers=ollama_headers(),
-                    timeout=1.0,
+                    timeout=2.0,
                 )
-                if res.status_code == 200:
-                    status = "healthy"
-                else:
-                    status = "unhealthy_ollama_not_responding"
+                status = (
+                    "healthy"
+                    if res.status_code == 200
+                    else "unhealthy_ollama_not_responding"
+                )
         except Exception:
             status = "ollama_not_reachable"
 
