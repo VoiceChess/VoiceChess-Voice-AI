@@ -296,6 +296,13 @@ class VoiceProcessor:
             f.write(audio_bytes)
 
         try:
+            log_event(
+                "stt_transcribe_started",
+                bytes=len(audio_bytes),
+                target_language=target_language,
+                device=self.stt_device,
+            )
+            start = time.perf_counter()
             loop = asyncio.get_running_loop()
 
             def run_whisper():
@@ -321,6 +328,13 @@ class VoiceProcessor:
             if detected_lang not in ["id", "en"]:
                 detected_lang = "en"
 
+            log_event(
+                "stt_transcribe_completed",
+                duration_ms=round((time.perf_counter() - start) * 1000, 2),
+                detected_language=detected_lang,
+                confidence=round(confidence, 4),
+                text_length=len(transcript),
+            )
             return transcript, detected_lang, confidence
         finally:
             if temp_file.exists():
@@ -550,14 +564,17 @@ async def startup() -> None:
     # comes up immediately. Downloading "base" on CPU can take minutes; blocking
     # startup here makes Railway's healthcheck fail with "service unavailable".
     async def _load_stt() -> None:
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, processor.load)
-        log_event(
-            "startup_ready",
-            active_stt_device=processor.stt_device,
-            default_language=processor.language,
-            default_voice=processor.tts_voice,
-        )
+        try:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, processor.load)
+            log_event(
+                "startup_ready",
+                active_stt_device=processor.stt_device,
+                default_language=processor.language,
+                default_voice=processor.tts_voice,
+            )
+        except Exception as error:
+            log_event("startup_stt_failed", error=str(error), model=STT_MODEL_SIZE)
 
     asyncio.create_task(_load_stt())
 
@@ -589,7 +606,8 @@ async def health_deep() -> dict:
                     if res.status_code == 200
                     else "unhealthy_ollama_not_responding"
                 )
-        except Exception:
+        except Exception as error:
+            log_event("health_deep_ollama_failed", error=str(error))
             status = "ollama_not_reachable"
 
     return {
@@ -619,6 +637,7 @@ async def transcribe_audio(request: Request) -> TranscribeResponse:
         raise HTTPException(status_code=400, detail="Audio stream is too short")
 
     if processor.stt_model is None:
+        log_event("voice_rejected", reason="stt_model_loading", language=cfg.language)
         raise HTTPException(status_code=503, detail="Speech model is still loading")
 
     try:
@@ -667,6 +686,10 @@ async def process_audio(request: Request) -> ProcessAudioResponse:
         rate=cfg.tts_rate,
         voice_enabled=cfg.enabled,
     )
+
+    if processor.stt_model is None:
+        log_event("voice_rejected", reason="stt_model_loading", language=cfg.language)
+        raise HTTPException(status_code=503, detail="Speech model is still loading")
 
     try:
         # Layer 0: STT — must complete before move/response generation
